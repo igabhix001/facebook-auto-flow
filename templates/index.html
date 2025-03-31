@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Signup Automation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin-top: 50px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #4267B2;
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            padding: 15px 20px;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background-color: #4267B2;
+            border-color: #4267B2;
+        }
+        .btn-primary:hover {
+            background-color: #365899;
+            border-color: #365899;
+        }
+        .progress {
+            height: 25px;
+            margin-bottom: 15px;
+        }
+        .progress-bar {
+            background-color: #4267B2;
+        }
+        .table {
+            margin-bottom: 0;
+        }
+        .status-success {
+            color: #28a745;
+        }
+        .status-error {
+            color: #dc3545;
+        }
+        .status-pending {
+            color: #ffc107;
+        }
+        #dropArea {
+            border: 2px dashed #4267B2;
+            border-radius: 8px;
+            padding: 25px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #dropArea:hover {
+            background-color: rgba(66, 103, 178, 0.1);
+        }
+        #dropArea.highlight {
+            background-color: rgba(66, 103, 178, 0.2);
+            border-color: #365899;
+        }
+        .hidden {
+            display: none;
+        }
+        .logo {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .logo h1 {
+            color: #4267B2;
+            font-weight: bold;
+        }
+        .logo i {
+            color: #4267B2;
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        #phoneTable {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <i class="fab fa-facebook"></i>
+            <h1>Facebook Signup Automation</h1>
+            <p class="text-muted">Upload an Excel file with phone numbers to automate Facebook account creation</p>
+        </div>
+
+        <div class="card" id="uploadCard">
+            <div class="card-header">
+                <i class="fas fa-upload me-2"></i> Upload Excel File
+            </div>
+            <div class="card-body">
+                <div id="dropArea">
+                    <i class="fas fa-file-excel fa-3x mb-3" style="color: #4267B2;"></i>
+                    <h5>Drag & Drop your Excel file here</h5>
+                    <p class="text-muted">or click to browse files</p>
+                    <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
+                </div>
+                <div id="fileInfo" class="mt-3 hidden">
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        File uploaded: <span id="fileName"></span>
+                    </div>
+                    <button id="startProcessBtn" class="btn btn-primary w-100">
+                        <i class="fas fa-play me-2"></i> Start Process
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card hidden" id="progressCard">
+            <div class="card-header">
+                <i class="fas fa-cogs me-2"></i> Processing Status
+            </div>
+            <div class="card-body">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%">0%</div>
+                </div>
+                <p id="statusText" class="text-center">Initializing process...</p>
+                
+                <div class="card mt-4">
+                    <div class="card-header bg-light text-dark">
+                        <i class="fas fa-phone me-2"></i> Phone Numbers Status
+                    </div>
+                    <div id="phoneTable">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#</th>
+                                    <th scope="col">Phone Number</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="phoneTableBody">
+                                <!-- Phone entries will be added here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="completionInfo" class="mt-4 hidden">
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Process completed! <a href="#" id="downloadLink" class="alert-link">Download updated Excel file</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            const dropArea = document.getElementById('dropArea');
+            const fileInput = document.getElementById('fileInput');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const startProcessBtn = document.getElementById('startProcessBtn');
+            const uploadCard = document.getElementById('uploadCard');
+            const progressCard = document.getElementById('progressCard');
+            const progressBar = document.getElementById('progressBar');
+            const statusText = document.getElementById('statusText');
+            const phoneTableBody = document.getElementById('phoneTableBody');
+            const completionInfo = document.getElementById('completionInfo');
+            const downloadLink = document.getElementById('downloadLink');
+            
+            // File upload data
+            let uploadedFile = null;
+            let uploadedFilePath = null;
+            let taskId = null;
+            let processedCount = 0;
+            let totalCount = 0;
+            let phoneEntries = {};
+            
+            // Socket.io connection
+            const socket = io();
+            
+            // Drag and drop events
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('highlight');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('highlight');
+            }
+            
+            // Handle file drop
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length > 0) {
+                    handleFiles(files);
+                }
+            }
+            
+            // Handle file selection via click
+            dropArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFiles(e.target.files);
+                }
+            });
+            
+            function handleFiles(files) {
+                uploadedFile = files[0];
+                
+                // Check file type
+                const fileExt = uploadedFile.name.split('.').pop().toLowerCase();
+                if (fileExt !== 'xlsx' && fileExt !== 'xls') {
+                    alert('Please upload an Excel file (.xlsx or .xls)');
+                    return;
+                }
+                
+                // Display file info
+                fileName.textContent = uploadedFile.name;
+                fileInfo.classList.remove('hidden');
+                
+                // Upload file to server
+                uploadFile(uploadedFile);
+            }
+            
+            function uploadFile(file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        uploadedFilePath = data.filepath;
+                    } else {
+                        alert('Error uploading file: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error uploading file. Please try again.');
+                });
+            }
+            
+            // Start process button
+            startProcessBtn.addEventListener('click', () => {
+                if (!uploadedFilePath) {
+                    alert('Please wait for the file to finish uploading');
+                    return;
+                }
+                
+                fetch('/start-process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filepath: uploadedFilePath
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        taskId = data.task_id;
+                        uploadCard.classList.add('hidden');
+                        progressCard.classList.remove('hidden');
+                        
+                        // Start polling for task status
+                        pollTaskStatus();
+                    } else {
+                        alert('Error starting process: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error starting process. Please try again.');
+                });
+            });
+            
+            // Poll task status
+            function pollTaskStatus() {
+                if (!taskId) return;
+                
+                fetch(`/task-status/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.state === 'PENDING') {
+                        statusText.textContent = 'Initializing process...';
+                        setTimeout(pollTaskStatus, 1000);
+                    } else if (data.state === 'PROGRESS') {
+                        processedCount = data.status.current;
+                        totalCount = data.status.total;
+                        
+                        const percentage = Math.round((processedCount / totalCount) * 100);
+                        progressBar.style.width = `${percentage}%`;
+                        progressBar.textContent = `${percentage}%`;
+                        progressBar.setAttribute('aria-valuenow', percentage);
+                        
+                        statusText.textContent = data.status.status;
+                        
+                        setTimeout(pollTaskStatus, 1000);
+                    } else if (data.state === 'SUCCESS') {
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        progressBar.setAttribute('aria-valuenow', 100);
+                        
+                        statusText.textContent = 'Process completed successfully!';
+                        
+                        // Show download link
+                        completionInfo.classList.remove('hidden');
+                        downloadLink.href = `/download/${data.result.filename}`;
+                    } else {
+                        // Error
+                        statusText.textContent = `Error: ${data.status}`;
+                        statusText.classList.add('text-danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    statusText.textContent = 'Error checking status. Retrying...';
+                    setTimeout(pollTaskStatus, 2000);
+                });
+            }
+            
+            // Socket.io events
+            socket.on('connect', () => {
+                console.log('Connected to server');
+            });
+            
+            socket.on('progress_update', (data) => {
+                processedCount = data.current;
+                totalCount = data.total;
+                
+                const percentage = Math.round((processedCount / totalCount) * 100);
+                progressBar.style.width = `${percentage}%`;
+                progressBar.textContent = `${percentage}%`;
+                progressBar.setAttribute('aria-valuenow', percentage);
+                
+                // Update status text with more detailed information if available
+                if (data.status) {
+                    statusText.textContent = data.status;
+                } else {
+                    statusText.textContent = `Processing phone number ${processedCount} of ${totalCount}`;
+                }
+                
+                // Add phone to table if not exists
+                if (!phoneEntries[data.phone]) {
+                    addPhoneToTable(data.phone, 'Processing', '', processedCount);
+                    phoneEntries[data.phone] = processedCount;
+                }
+            });
+            
+            socket.on('phone_processed', (data) => {
+                console.log('Phone processed:', data);
+                let statusClass = '';
+                
+                // Determine status class based on the raw_status if available, otherwise use status
+                const status = data.raw_status || data.status;
+                
+                if (status === 'OTP Sent') {
+                    statusClass = 'status-success';
+                } else if (status === 'Success') {
+                    statusClass = 'status-success';
+                } else if (status === 'Failed' || status === 'Error') {
+                    statusClass = 'status-error';
+                } else {
+                    statusClass = 'status-pending';
+                }
+                
+                // Create a detailed message combining status and error/message
+                let detailMessage = '';
+                if (data.error) {
+                    detailMessage = data.error;
+                } else if (data.message) {
+                    detailMessage = data.message;
+                }
+                
+                // Update phone in table with more detailed information
+                updatePhoneInTable(data.phone, data.status, detailMessage, statusClass);
+            });
+            
+            // Helper functions for table
+            function addPhoneToTable(phone, status, error, index) {
+                const row = document.createElement('tr');
+                row.id = `phone-${phone.replace(/\D/g, '')}`;
+                
+                row.innerHTML = `
+                    <td>${index}</td>
+                    <td>${phone}</td>
+                    <td><span class="status-pending">${status}</span></td>
+                    <td>${error}</td>
+                `;
+                
+                phoneTableBody.appendChild(row);
+                
+                // Scroll to bottom of table
+                const phoneTable = document.getElementById('phoneTable');
+                phoneTable.scrollTop = phoneTable.scrollHeight;
+            }
+            
+            function updatePhoneInTable(phone, status, error, statusClass) {
+                const row = document.getElementById(`phone-${phone.replace(/\D/g, '')}`);
+                if (row) {
+                    const statusCell = row.querySelector('td:nth-child(3)');
+                    const errorCell = row.querySelector('td:nth-child(4)');
+                    
+                    if (statusCell) {
+                        statusCell.innerHTML = `<span class="${statusClass}">${status}</span>`;
+                    }
+                    
+                    if (errorCell) {
+                        errorCell.textContent = error || '';
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
