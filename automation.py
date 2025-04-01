@@ -15,6 +15,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException, StaleElementReferenceException
 import names
 from dotenv import load_dotenv
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 # Configure logging
 logging.basicConfig(
@@ -33,25 +35,81 @@ load_dotenv()
 class FacebookSignupAutomation:
     """Class to handle Facebook signup automation"""
     
-    def __init__(self):
-        """Initialize the automation with browser setup"""
+    def __init__(self, headless=False, max_retries=3):
+        """Initialize the automation with browser settings"""
         logger.info("Initializing FacebookSignupAutomation")
         self.driver = None
-        try:
-            # Create screenshots directory if it doesn't exist
-            self.screenshots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
-            os.makedirs(self.screenshots_dir, exist_ok=True)
-            
-            self.setup_browser()
-            self.captcha_api_key = os.getenv('CAPTCHA_API_KEY')
-            self.captcha_service_url = os.getenv('CAPTCHA_SERVICE_URL', 'https://2captcha.com/in.php')
-            self.max_retries = 3
-            self.facebook_signup_url = "https://www.facebook.com/signup"
-            logger.info("FacebookSignupAutomation initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing FacebookSignupAutomation: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+        self.max_retries = max_retries
+        self.facebook_signup_url = "https://www.facebook.com/signup"
+        self.screenshots_dir = "screenshots"
+        
+        # Ensure screenshots directory exists
+        if not os.path.exists(self.screenshots_dir):
+            os.makedirs(self.screenshots_dir)
+        
+        # Set up Chrome options
+        chrome_options = Options()
+        if headless:
+            chrome_options.add_argument("--headless")
+        
+        # Add anti-detection measures
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option("useAutomationExtension", False)
+        
+        # Add random user agent
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0"
+        ]
+        chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
+        
+        # Add window size randomization
+        window_sizes = [(1366, 768), (1440, 900), (1536, 864), (1920, 1080)]
+        window_size = random.choice(window_sizes)
+        chrome_options.add_argument(f"--window-size={window_size[0]},{window_size[1]}")
+        
+        # Initialize Chrome driver
+        chrome_driver_path = r"C:\Users\abhir\Downloads\facebook Auto-flow\chromedriver_win32\chromedriver.exe"
+        if os.path.exists(chrome_driver_path):
+            logger.info(f"ChromeDriver found at {chrome_driver_path}")
+            service = Service(executable_path=chrome_driver_path)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            logger.info("Chrome WebDriver created successfully")
+        else:
+            logger.error(f"ChromeDriver not found at {chrome_driver_path}")
+            raise Exception(f"ChromeDriver not found at {chrome_driver_path}")
+        
+        # Apply additional anti-detection measures
+        self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                
+                // Overwrite the 'plugins' property to use a custom getter
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                
+                // Overwrite the 'languages' property to use a custom getter
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en', 'es']
+                });
+                
+                // Modify the permission behavior
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+            """
+        })
+        
+        logger.info("FacebookSignupAutomation initialized successfully")
     
     def setup_browser(self):
         """Set up the browser with appropriate options"""
@@ -253,9 +311,22 @@ class FacebookSignupAutomation:
         # Convert list to string
         return ''.join(password)
     
-    def random_delay(self, min_seconds=1, max_seconds=3):
+    def random_delay(self):
         """Add a random delay to simulate human behavior"""
-        delay = random.uniform(min_seconds, max_seconds)
+        # More human-like random delays with variable distribution
+        delay_options = [
+            random.uniform(0.5, 1.5),  # Short delay (50% chance)
+            random.uniform(1.5, 2.5),  # Medium delay (30% chance)
+            random.uniform(2.5, 4.0)   # Long delay (20% chance)
+        ]
+        weights = [0.5, 0.3, 0.2]
+        delay = random.choices(delay_options, weights=weights)[0]
+        
+        # Add micro-variations to make it more human-like
+        micro_pauses = random.randint(0, 3)
+        for _ in range(micro_pauses):
+            time.sleep(random.uniform(0.1, 0.3))
+            
         time.sleep(delay)
     
     def solve_captcha(self, captcha_element):
@@ -314,34 +385,37 @@ class FacebookSignupAutomation:
             
             logger.info(f"Generated data - Name: {first_name} {surname}, DOB: {dob['day']}/{dob['month']}/{dob['year']}, Gender: {gender}")
             
-            # Fill first name
+            # Add human-like behavior - look at the form before filling
+            self.random_delay()
+            
+            # Fill first name with human-like typing
             logger.info("Filling first name field")
             first_name_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.NAME, "firstname"))
             )
             first_name_field.clear()
-            first_name_field.send_keys(first_name)
+            self.human_like_typing(first_name_field, first_name)
             self.random_delay()
             
-            # Fill surname
+            # Fill surname with human-like typing
             logger.info("Filling surname field")
             surname_field = self.driver.find_element(By.NAME, "lastname")
             surname_field.clear()
-            surname_field.send_keys(surname)
+            self.human_like_typing(surname_field, surname)
             self.random_delay()
             
-            # Fill mobile number or email
+            # Fill mobile number with human-like typing
             logger.info(f"Filling mobile number field with {phone_number}")
             mobile_field = self.driver.find_element(By.NAME, "reg_email__")
             mobile_field.clear()
-            mobile_field.send_keys(phone_number)
+            self.human_like_typing(mobile_field, phone_number)
             self.random_delay()
             
-            # Fill password
+            # Fill password with human-like typing
             logger.info("Filling password field")
             password_field = self.driver.find_element(By.NAME, "reg_passwd__")
             password_field.clear()
-            password_field.send_keys(password)
+            self.human_like_typing(password_field, password)
             self.random_delay()
             
             # Select birthday
@@ -866,6 +940,103 @@ class FacebookSignupAutomation:
                 "error": str(e)
             }
     
+    def process_phone_numbers(self, phone_numbers):
+        """Process a list of phone numbers and return results"""
+        results = []
+        
+        try:
+            for i, phone_number in enumerate(phone_numbers):
+                logger.info(f"Processing phone number {phone_number} ({i+1}/{len(phone_numbers)})")
+                
+                # Add random delay between phone numbers to avoid detection
+                if i > 0:
+                    delay = random.uniform(5, 15)
+                    logger.info(f"Adding random delay of {delay:.2f} seconds between phone numbers")
+                    time.sleep(delay)
+                
+                # Process the phone number
+                result = self.process_phone_number(phone_number)
+                
+                # Add the phone number to the result
+                result["phone_number"] = phone_number
+                results.append(result)
+                
+                # Every 5 phone numbers, restart the browser to avoid detection
+                if (i + 1) % 5 == 0 and i < len(phone_numbers) - 1:
+                    logger.info("Restarting browser to avoid detection")
+                    self.driver.quit()
+                    
+                    # Random delay before restarting
+                    restart_delay = random.uniform(10, 20)
+                    logger.info(f"Waiting {restart_delay:.2f} seconds before restarting browser")
+                    time.sleep(restart_delay)
+                    
+                    # Reinitialize the driver with new options
+                    chrome_options = Options()
+                    
+                    # Add anti-detection measures
+                    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+                    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                    chrome_options.add_experimental_option("useAutomationExtension", False)
+                    
+                    # Add random user agent
+                    user_agents = [
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36",
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0"
+                    ]
+                    chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
+                    
+                    # Add window size randomization
+                    window_sizes = [(1366, 768), (1440, 900), (1536, 864), (1920, 1080)]
+                    window_size = random.choice(window_sizes)
+                    chrome_options.add_argument(f"--window-size={window_size[0]},{window_size[1]}")
+                    
+                    # Initialize Chrome driver
+                    chrome_driver_path = r"C:\Users\abhir\Downloads\facebook Auto-flow\chromedriver_win32\chromedriver.exe"
+                    if os.path.exists(chrome_driver_path):
+                        logger.info(f"ChromeDriver found at {chrome_driver_path}")
+                        service = Service(executable_path=chrome_driver_path)
+                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                        logger.info("Chrome WebDriver created successfully")
+                    else:
+                        logger.error(f"ChromeDriver not found at {chrome_driver_path}")
+                        raise Exception(f"ChromeDriver not found at {chrome_driver_path}")
+                    
+                    # Apply additional anti-detection measures
+                    self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                        "source": """
+                            Object.defineProperty(navigator, 'webdriver', {
+                                get: () => undefined
+                            });
+                            
+                            // Overwrite the 'plugins' property to use a custom getter
+                            Object.defineProperty(navigator, 'plugins', {
+                                get: () => [1, 2, 3, 4, 5]
+                            });
+                            
+                            // Overwrite the 'languages' property to use a custom getter
+                            Object.defineProperty(navigator, 'languages', {
+                                get: () => ['en-US', 'en', 'es']
+                            });
+                        """
+                    })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error processing phone numbers: {str(e)}")
+            logger.error(traceback.format_exc())
+            return results
+        
+        finally:
+            # Close the browser
+            try:
+                self.driver.quit()
+            except:
+                pass
+    
     def clear_browser_data(self):
         """Clear cookies, local storage, and session storage to start fresh"""
         try:
@@ -908,3 +1079,26 @@ class FacebookSignupAutomation:
         except Exception as e:
             logger.error(f"Error closing browser: {str(e)}")
             logger.error(traceback.format_exc())
+    
+    def human_like_typing(self, element, text):
+        """Type text in a human-like manner with variable speed and occasional mistakes"""
+        for char in text:
+            # Random typing speed
+            typing_speed = random.uniform(0.05, 0.2)
+            
+            # Occasionally make a typo and correct it (5% chance)
+            if random.random() < 0.05:
+                typo_chars = "qwertyuiopasdfghjklzxcvbnm"
+                typo_char = random.choice(typo_chars)
+                element.send_keys(typo_char)
+                time.sleep(random.uniform(0.1, 0.3))
+                element.send_keys(Keys.BACKSPACE)
+                time.sleep(random.uniform(0.1, 0.2))
+            
+            # Type the actual character
+            element.send_keys(char)
+            time.sleep(typing_speed)
+            
+            # Occasionally pause while typing (10% chance)
+            if random.random() < 0.1:
+                time.sleep(random.uniform(0.3, 0.7))
